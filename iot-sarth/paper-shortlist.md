@@ -60,6 +60,19 @@ Ranked (details below):
 - Risks: simulation-only unless hardware is added; LoRaWAN is not on the faculty example list, so the title needs approval;
   OMNeT++/FLoRa version compatibility; long simulations.
 
+## 20-day feasibility (assumes 2-3 people, ~2-3 h/day each; estimates, repos not built or run)
+Revised recommendation under a 20-day deadline: ACTOR first, LP-MAB second, DAIS-MQTT only with reduced scope.
+
+| Paper | Verdict | Scope to cut |
+|-------|---------|--------------|
+| ACTOR | Yes, most comfortable (public code, 7 fully specified Cooja scenarios) | 3 scenarios (dense, congested, mobile); baselines RPL max power + ACTOR + ACTOR-D (TPP only if in repo) |
+| LP-MAB | Yes, if FLoRa/OMNeT++ builds (budget 2-3 days for setup) | 3 densities, 5 runs instead of 20, no ESP32 hardware extension |
+| DAIS-MQTT | Tight, reduced scope only (no code, own broker agents + algorithm + load generator to build) | 3 brokers, a few ESP32 for the demo, baselines Mosquitto vs static multi-broker; trends not exact numbers |
+
+Plan: days 1-2 environment and go/no-go (build the repo, run one scenario; switch paper if it fails), days 3-9 reproduce baseline,
+days 10-13 one small extension, days 14-16 final runs and plots, days 17-20 report/slides/demo (start drafting the report around day 8).
+Document every scope reduction in the report. Only DAIS-MQTT gives a physical RPi + ESP32 demo; ACTOR and LP-MAB demos are simulation playback.
+
 ## Backups (not in the top 3, with the reason)
 - prCoAP, arXiv 2607.18273: CoAP retransmission timeout predicted by linear SVR plus a Random Forest drop classifier. Very on-topic,
   but a preprint submitted to WFIoT 2026 (may not count as "published") and no code.
