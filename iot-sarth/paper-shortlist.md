@@ -74,12 +74,27 @@ days 10-13 one small extension, days 14-16 final runs and plots, days 17-20 repo
 Document every scope reduction in the report. Only DAIS-MQTT gives a physical RPi + ESP32 demo; ACTOR and LP-MAB demos are simulation playback.
 
 ## Backups (not in the top 3, with the reason)
-- prCoAP, arXiv 2607.18273: CoAP retransmission timeout predicted by linear SVR plus a Random Forest drop classifier. Very on-topic,
-  but a preprint submitted to WFIoT 2026 (may not count as "published") and no code.
+- prCoAP, arXiv 2607.18273: CoAP retransmission timeout predicted by per-attempt linear SVR plus a Random Forest drop classifier.
+  Very on-topic, but a preprint submitted to WFIoT 2026 (may not count as "published"). CORRECTION: the PDF's footnote 2 says the
+  simulations are open-sourced (GitHub link in the paper; not opened here). See "ML-forward options" below.
 - NanoEdgeGuard, arXiv 2607.27858 (EuCNC/6G Summit 2026): RPi MQTT gateway + 2 ESP32, closed-loop kernel traffic control. Perfect
   hardware match, but the paper has no ML (you would add it as the extension) and reports early results only.
 - Q-RPL, Sensors 2024 (10.3390/s24154818): RPL + Q-learning, strong results, but no code and a custom OMNeT++ RPL, so the heaviest to reproduce.
 - Energy-Efficient Dynamic RTO for CoAP, Sensors 2026 (10.3390/s26123960): good CoAP content but no ML.
+
+## ML-forward options (if the faculty want more visible ML than a bandit)
+ACTOR, DAIS-MQTT and LP-MAB use bandit-style online learning only (no trained model, features or accuracy metrics).
+1. prCoAP (arXiv 2607.18273, 12 Jun 2026, Hansson and Donta): read in full. Features [SRTT, RTTVAR, attempt index, IAT, success rate
+   over W=10]; one linear SVR per attempt 0-6 on a log-transformed RTO (3-fold CV, C in {0.01,0.1,1,10}, eps in {0.01,0.05,0.1,0.2},
+   about 768 bytes); Random Forest (100 trees, depth 8, isotonic calibration, adaptive threshold) from attempt 3. Data from a 300-scenario
+   Python simulator sweep, 80/20 split. Reported: overall linear R2 0.63, MAE 117 ms; kernel SVR R2 0.84 with 84.6% energy overhead;
+   RF ROC-AUC 0.72. Results are mixed: PDR gains under bursty channels, but baselines match or beat it on goodput and latency in the
+   load-sweep tables. Authors state data is simulator-generated and hardware validation is future work (the abstract mentions FIT IoT-LAB;
+   the body does not show it). Preprint status: ask the faculty.
+2. ACTOR + learned extension (LinUCB with RSSI/ETX/neighbour-count features, or a decision tree trained on Cooja logs and exported to C).
+   The ML is the team's extension, not the paper's.
+3. TinyML adaptive sampling with LoRa on ESP32 (Sensors 2026, 10.3390/s26072014): SGD regressor, battery-aware batching. Protocol part is
+   thin (raw LoRa), data not public, 60-day field deployment; closest to the rejected dataset-plus-ML style.
 
 ## Avoid
 - Surveys and reviews (the RPL attacks survey on the faculty slide is a review, so it is not allowed).
