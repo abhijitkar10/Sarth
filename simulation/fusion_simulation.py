@@ -50,7 +50,7 @@ def make_models(y, specs, rho_global, c_family):
     noise_m = sqrt(rho_global) g + sqrt(c_family - rho_global) f_fam + sqrt(1 - c_family) e_m."""
     n, t = y.shape
     g = rng.standard_normal((n, t))
-    fams = {f: rng.standard_normal((n, t)) for f in {s[0] for s in specs}}
+    fams = {f: rng.standard_normal((n, t)) for f in sorted({s[0] for s in specs})}
     out = []
     for fam, d in specs:
         e = rng.standard_normal((n, t))
@@ -150,6 +150,72 @@ for name, off_d_scale in {"views_equally_good": 1.0, "off_centre_5pct_weaker": 0
                    "weights_1_4_1_delta": summarize(np.array(rec["weights_1_4_1"]) - c0),
                    "equal_thirds_delta": summarize(np.array(rec["equal_thirds"]) - c0)}
 res["exp4_gain_views"] = views
+
+
+# ---- Exp 5: factorial ablation on a toy replica of the fusion graph ------------------
+# T branch (DINO x20 + A5 x5 + Rad head) -> optional residuals A, B -> rank;
+# H = 0.6 * Raptor (optionally gain-averaged, G) + 0.4 * residual CoAt;
+# final = rank((1-w) T' + w H) with w = 0.60 (1.00 for target index 3 = lateral meniscus).
+def make_models2(y, specs, rho_global, c_by_family):
+    """specs: list of (family, strength). noise = sqrt(rho)*g + sqrt(c_f - rho)*f_fam + sqrt(1-c_f)*e."""
+    n, t = y.shape
+    g = rng.standard_normal((n, t))
+    fams = {f: rng.standard_normal((n, t)) for f in sorted({s_[0] for s_ in specs})}
+    out = []
+    for fam, strength in specs:
+        c = max(c_by_family[fam], rho_global)
+        e = rng.standard_normal((n, t))
+        out.append(math.sqrt(rho_global) * g + math.sqrt(c - rho_global) * fams[fam] + math.sqrt(1 - c) * e)
+    return out  # noise only; signal added by caller
+
+
+def d_shift(dt, gain):
+    return np.array([d_for_auc(min(max(phi(d / math.sqrt(2)) + gain, 0.6), 0.99)) for d in dt])
+
+
+CONFIGS = {"parent": (0, 0, 0), "A": (1, 0, 0), "B": (0, 1, 0), "G": (0, 0, 1), "AB": (1, 1, 0), "ABG": (1, 1, 1)}
+HEAD_SCENARIOS = {"heads_worse_0.03auc": -0.03, "heads_equal": 0.0, "heads_better_0.02auc": 0.02,
+                  "stress_worse_0.06": -0.06, "stress_worse_0.10": -0.10, "stress_worse_0.15": -0.15}
+fact = {k: {c: [] for c in CONFIGS} for k in HEAD_SCENARIOS}
+for _ in range(R):
+    y = (rng.random((N, T)) < PREV).astype(float)
+    dt = per_target_d(0.90)
+    for scen, hq in HEAD_SCENARIOS.items():
+        fam_c = {"dino": 0.7, "a5": 0.7, "rad": 0.92, "raptor": 0.9, "rescoat": 0.7}
+        # model list: 20 dino, 5 a5, rad ref, e13, e11, e10ref, e10alt, 3 raptor views, rescoat
+        specs = [("dino", 1.0)] * 20 + [("a5", 1.03)] * 5 + [("rad", 0.93), ("rad", 0.95), ("rad", 0.95), ("rad", 0.93), ("rad", 0.93)] \
+                + [("raptor", 1.05)] * 3 + [("rescoat", 1.0)]
+        noises = make_models2(y, specs, 0.40, fam_c)
+        sig = []
+        for idx, (fam, st) in enumerate(specs):
+            d_use = dt * st
+            if idx == 27:   d_use = d_shift(dt * 0.95, hq)       # E11 native (A head) quality shift vs E13 (idx 26)
+            if idx == 29:   d_use = d_shift(dt * 0.93, hq)       # alternate E10 (B head) quality shift vs reference E10 (idx 28)
+            if idx in (30, 32): d_use = dt * 1.05 * 0.95         # off-centre Raptor views (gain 0.9 / 1.1) are 5% weaker
+            sig.append(d_use[None, :] * y)
+        sc = [sig[i] + noises[i] for i in range(len(specs))]
+        dino = rank01(np.mean(sc[0:20], axis=0)); a5 = rank01(np.mean(sc[20:25], axis=0))
+        rad_ref, e13, e11, e10r, e10a = (rank01(sc[i]) for i in range(25, 30))
+        r_views = [rank01(sc[30]), rank01(sc[31]), rank01(sc[32])]   # gains 0.9, 1.0, 1.1
+        rescoat = rank01(sc[33])
+        da = rank01(0.55 * dino + 0.45 * a5)
+        T0 = rank01(0.7 * da + 0.3 * rad_ref)
+        for name, (a_on, b_on, g_on) in CONFIGS.items():
+            Tp = T0 + a_on * 0.15 * (e11 - e13) + b_on * 0.85 * 0.500001 * (e10a - e10r)
+            Tp = rank01(Tp)
+            rap = rank01(r_views[0] / 6 + r_views[1] * 4 / 6 + r_views[2] / 6) if g_on else r_views[1]
+            H = rank01(0.6 * rap + 0.4 * rescoat)
+            final = rank01(0.4 * Tp + 0.6 * H)
+            final[:, 3] = H[:, 3]                                # lateral meniscus uses the CoAt branch alone
+            fact[scen][name].append(macro_auc(final, y))
+exp5 = {}
+for scen in HEAD_SCENARIOS:
+    base_ = np.array(fact[scen]["parent"])
+    exp5[scen] = {"parent_macro_auc": summarize(base_)}
+    for name in CONFIGS:
+        if name != "parent":
+            exp5[scen][name] = summarize(np.array(fact[scen][name]) - base_)
+res["exp5_factorial"] = exp5
 
 json.dump(res, open("results.json", "w"), indent=2)
 print(json.dumps(res, indent=1))
